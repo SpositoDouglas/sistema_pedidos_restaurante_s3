@@ -29,46 +29,55 @@ def lambda_handler(event, context):
             order_id = message_body.get('order_id')
 
             if not order_id:
-                print("Mensagem SQS sem order_id. Ignorando.")
                 continue
 
-            print(f"Processando pedido: {order_id}")
+            print(f"Iniciando processamento do pedido: {order_id}")
 
-            pdf_content = f"--- COMPROVANTE ---\nPedido ID: {order_id}\nStatus: Processado pela Cozinha"
-            pdf_filename = f"comprovante-{order_id}.txt"
+            response = TABLE.get_item(Key={'id': order_id})
+            item = response.get('Item')
 
+            if not item:
+                print(f"Erro: Pedido {order_id} não encontrado no banco.")
+                continue
+            
+            cliente = item.get('cliente', 'Desconhecido')
+            mesa = item.get('mesa', 'N/A')
+            lista_itens = ", ".join(item.get('itens', [])) 
+            
+            print_do_pedido = (
+                f"=== PEDIDO PRONTO ===\n"
+                f"ID: {order_id}\n"
+                f"Cliente: {cliente}\n"
+                f"Mesa: {mesa}\n"
+                f"Itens: {lista_itens}\n"
+                f"====================="
+            )
 
             s3.put_object(
                 Bucket=BUCKET_NAME,
-                Key=pdf_filename,
-                Body=pdf_content,
+                Key=f"comprovante-{order_id}.txt",
+                Body=print_do_pedido,
                 ContentType='text/plain'
             )
-            print(f"Comprovante salvo em s3://{BUCKET_NAME}/{pdf_filename}")
 
-
-            try:
-                TABLE.update_item(
-                    Key={'id': order_id},
-                    UpdateExpression="SET #status_pedido = :novo_status",
-                    ExpressionAttributeNames={'#status_pedido': 'status'},
-                    ExpressionAttributeValues={':novo_status': 'CONCLUIDO'}
-                )
-                print(f"Status do pedido {order_id} atualizado para CONCLUIDO.")
-            except Exception as e:
-                print(f"Erro ao atualizar DynamoDB: {e}")
-
+            TABLE.update_item(
+                Key={'id': order_id},
+                UpdateExpression="SET #status_pedido = :novo_status",
+                ExpressionAttributeNames={'#status_pedido': 'status'},
+                ExpressionAttributeValues={':novo_status': 'CONCLUIDO'}
+            )
+            print(f"Status atualizado para CONCLUIDO no DynamoDB.")
 
 
             sns.publish(
                 TopicArn=TOPIC_ARN,
-                Message=f"Novo pedido concluído: {order_id}",
-                Subject="Pedido Pronto!"
+                Message=print_do_pedido,
+                Subject="Pedido Pronto para Retirada!"
             )
-            print(f"Notificação SNS enviada para o pedido {order_id}")
+            print(f"Notificação SNS enviada com detalhes do pedido.")
 
         except Exception as e:
-            print(f"Erro ao processar mensagem SQS: {e}")
+            print(f"Erro ao processar mensagem: {e}")
             raise e 
 
     return {'statusCode': 200, 'body': json.dumps('Processamento concluído.')}
