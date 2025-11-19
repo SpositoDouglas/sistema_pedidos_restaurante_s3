@@ -29,44 +29,42 @@ sistema_pedidos_restaurante
 
 Antes de começar, garanta que você tenha os seguintes softwares instalados:
 * [Docker-Desktop](https://www.docker.com/products/docker-desktop/)
-* [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html)
-* `zip` (para empacotar as Lambdas. No WSL/Ubuntu: `sudo apt install zip`)
 
 ## Executando o Projeto
 
-### 1. Iniciar o Ambiente LocalStack
+### 1. Iniciar os Containers
 
-Na raiz do projeto, suba os containers do Docker.
-
-```bash
-docker-compose up -d
-```
-### 2. Criar a Infraestrutura AWS (Local)
+No primeiro terminal, inicie os containers com o comando:
 
 ```bash
-# Torna o script executável (só precisa fazer uma vez)
-chmod +x setup.sh
-
-# Executa o script para criar a infraestrutura
-./setup.sh
+docker-compose up
 ```
-O script `setup.sh` irá criar todos os recursos e, ao final, **imprimirá a URL da API Gateway** que usaremos.
+### 2. Aguarde a Configuração Automática
+Você verá logs do LocalStack iniciando e, em seguida, um serviço chamado `setup-resources` irá rodar.
+Aguarde até aparecer a mensagem:
+
+```bash
+setup-resources-1  | === Setup Concluído! ===
+setup-resources-1  | URL da API Gateway:
+setup-resources-1  | http://localhost:4566/restapis/XXXXXX/prod/_user_request_/pedidos
+```
+
+### 3. Copie a URL
+Copie a URL exibida no terminal.
 
 ## Testando
+Com o terminal do Docker rodando (Terminal 1), abra um novo terminal (Terminal 2) para simular o cliente.
 
-Após o `setup.sh` rodar com sucesso, podemos fazer um teste de ponta a ponta.
 
 ### 1. Fazer um Pedido (POST na API)
 
-Copie a URL da API que apareceu no final do passo anterior e exporte-a como uma variável de ambiente:
+No Terminal 2, exporte a URL que você copiou e faça o pedido:
 
 ```bash
-export API_URL="http://localhost:4566/restapis/SEU_API_ID/prod/_user_request_/pedidos"
-```
+# Substitua pela URL que apareceu no Terminal 1
+export API_URL="http://localhost:4566/restapis/SEU_ID_AQUI/prod/_user_request_/pedidos"
 
-Agora, envie um pedido de teste usando `curl`:
-
-```bash
+# Envia o pedido via Curl
 curl -X POST $API_URL \
 -H "Content-Type: application/json" \
 -d '{
@@ -75,24 +73,27 @@ curl -X POST $API_URL \
     "mesa": 12
 }'
 ```
+
 **Resposta Esperada:**
 ```json
 {"message": "Pedido criado com sucesso!", "order_id": "..."}
 ```
 
-### 2. Verificar o Processamento (DynamoDB e S3)
+### 2. Verificar o Processamento (Logs em Tempo Real)
 
-O `curl` confirma que a **Lambda 1** funcionou. Agora, vamos verificar se a **Lambda 2** (que é assíncrona) também funcionou.
-
-**Verifique o Status no DynamoDB:**
-(Dê uns 2-3 segundos para o SQS acionar a Lambda 2)
-
+Imediatamente após fazer o pedido, olhe para o Terminal 1 (onde o Docker está rodando).
+Você verá a notificação do SNS aparecer nos logs, confirmando que todo o fluxo (API -> Dynamo -> SQS -> Lambda -> S3 -> SNS) funcionou:
 ```bash
-# Define o alias para facilitar os comandos
-alias awslocal="aws --endpoint-url=http://localhost:4566 --region us-east-1"
-
-# Verifica a tabela de Pedidos
-awslocal dynamodb scan --table-name Pedidos
+########################################
+      [SNS] NOTIFICAÇÃO ENVIADA      
+########################################
+=== PEDIDO PRONTO ===
+ID: ...
+Cliente: Maria
+Mesa: 12
+Itens: Moqueca, Suco de Caju
+=====================
+########################################
 ```
 **Resultado Esperado:**
 Procure o pedido da "Maria". O `status` dele deve ser **"CONCLUIDO"**.
@@ -104,3 +105,9 @@ awslocal s3 ls s3://pedidos-comprovantes
 ```
 **Resultado Esperado:**
 Você deve ver um arquivo `.txt` com o ID do pedido que acabou de ser criado (ex: `comprovante-....txt`).
+
+## Parando o Projeto
+Para desligar e limpar tudo:
+```bash
+docker-compose down
+```
