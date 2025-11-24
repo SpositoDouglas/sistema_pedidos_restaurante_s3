@@ -19,7 +19,11 @@ sistema_pedidos_restaurante
 ├── lambda_processar_pedido
 │  └── app.py
 ├── .gitignore
+├── criar_pedido.py
 ├── docker-compose.yml
+├── monitorar_sns.py
+├── processar_pedidos.py
+├── README.md
 └── setup.sh
 ```
 
@@ -37,7 +41,7 @@ Antes de começar, garanta que você tenha os seguintes softwares instalados:
 No primeiro terminal, inicie os containers com o comando:
 
 ```bash
-docker-compose up
+docker-compose up --build
 ```
 ### 2. Aguarde a Configuração Automática
 Você verá logs do LocalStack iniciando e, em seguida, um serviço chamado `setup-resources` irá rodar.
@@ -49,62 +53,35 @@ setup-resources-1  | URL da API Gateway:
 setup-resources-1  | http://localhost:4566/restapis/XXXXXX/prod/_user_request_/pedidos
 ```
 
-### 3. Copie a URL
-Copie a URL exibida no terminal.
-
 ## Testando
-Com o terminal do Docker rodando (Terminal 1), abra um novo terminal (Terminal 2) para simular o cliente.
+Com o terminal do Docker rodando (Terminal 1), abra dois novos terminais (Terminal 2 e 3) para simular o sistema.
 
 
-### 1. Fazer um Pedido (POST na API)
+### 1. Monitorar Notificações (SNS)
 
-No Terminal 2, exporte a URL que você copiou e faça o pedido:
+Abra o Terminal 2 e execute:
 
 ```bash
-# Substitua pela URL que apareceu no Terminal 1
-export API_URL="http://localhost:4566/restapis/SEU_ID_AQUI/prod/_user_request_/pedidos"
-
-# Envia o pedido via Curl
-curl -X POST $API_URL \
--H "Content-Type: application/json" \
--d '{
-    "cliente": "Maria",
-    "itens": ["Moqueca", "Suco de Caju"],
-    "mesa": 12
-}'
+docker-compose exec app-cliente python monitorar_sns.py
 ```
+Deixe esse terminal aberto. Ele mostrará o comprovante assim que o pedido for processado.
 
-**Resposta Esperada:**
-```json
-{"message": "Pedido criado com sucesso!", "order_id": "..."}
-```
+### 2. Criar um Pedido
 
-### 2. Verificar o Processamento (Logs em Tempo Real)
-
-Imediatamente após fazer o pedido, olhe para o Terminal 1 (onde o Docker está rodando).
-Você verá a notificação do SNS aparecer nos logs, confirmando que todo o fluxo (API -> Dynamo -> SQS -> Lambda -> S3 -> SNS) funcionou:
+Em outro terminal, execute o script para criar um pedido. Ele enviará os dados para a API Gateway, que salvará no banco e colocará na fila de espera.
 ```bash
-########################################
-      [SNS] NOTIFICAÇÃO ENVIADA      
-########################################
-=== PEDIDO PRONTO ===
-ID: ...
-Cliente: Maria
-Mesa: 12
-Itens: Moqueca, Suco de Caju
-=====================
-########################################
+docker-compose exec app-cliente python criar_pedido.py
+```
+Siga as instruções na tela (Nome, Mesa, Itens).
+
+### 3. Processar Pedido
+Este comando pega o pedido pendente, gera a nota fiscal no S3 e avisa no SNS.
+```bash
+docker-compose exec app-cliente python processar_pedidos.py
 ```
 **Resultado Esperado:**
-Procure o pedido da "Maria". O `status` dele deve ser **"CONCLUIDO"**.
-
-**Verifique o Comprovante no S3:**
-```bash
-# Lista os arquivos no bucket de comprovantes
-awslocal s3 ls s3://pedidos-comprovantes
-```
-**Resultado Esperado:**
-Você deve ver um arquivo `.txt` com o ID do pedido que acabou de ser criado (ex: `comprovante-....txt`).
+1. O script dirá "✅ Lambda executada com sucesso!".
+2. No terminal do Passo 1, a notificação do pedido pronto aparecerá instantaneamente.
 
 ## Parando o Projeto
 Para desligar e limpar tudo:
