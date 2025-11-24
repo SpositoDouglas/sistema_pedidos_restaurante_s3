@@ -74,12 +74,6 @@ def lambda_handler(event, context):
                 Subject="Pedido Pronto para Retirada!"
             )
 
- 
-            print("\n" + "#"*40)
-            print("      [SNS] NOTIFICAÇÃO ENVIADA      ")
-            print("#"*40)
-            print(print_do_pedido)
-            print("#"*40 + "\n")
 
         except Exception as e:
             print(f"Erro ao processar mensagem: {e}")

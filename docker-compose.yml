@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   localstack:
     image: localstack/localstack:latest
@@ -37,3 +35,19 @@ services:
         chmod +x setup.sh && 
         ./setup.sh
       "
+
+  app-cliente:
+    # ATUALIZADO: De python:3.9-slim para python:3.11-slim
+    image: python:3.11-slim
+    depends_on:
+      - localstack
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - ENDPOINT_URL=http://localstack:4566
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    command: >
+      bash -c "pip install requests boto3 && tail -f /dev/null"

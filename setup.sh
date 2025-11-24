@@ -3,7 +3,6 @@ ENDPOINT_URL="${ENDPOINT_URL:-http://localhost:4566}"
 
 echo "Usando endpoint: $ENDPOINT_URL"
 
-# Ajustamos o alias para usar a variável
 alias awslocal="aws --endpoint-url=$ENDPOINT_URL --region us-east-1"
 
 echo "=== 1. Criando Recursos Básicos (Dynamo, SQS, S3, SNS) ==="
@@ -25,40 +24,27 @@ awslocal sns create-topic --name PedidosConcluidos
 
 echo "=== 2. Empacotando e Criando Lambdas ==="
 
-
 zip -j lambda_criar_pedido.zip lambda_criar_pedido/app.py
-
-
 zip -j lambda_processar_pedido.zip lambda_processar_pedido/app.py
-
 
 awslocal lambda create-function \
     --function-name criar-pedido \
     --runtime python3.9 \
     --handler app.lambda_handler \
     --role arn:aws:iam::000000000000:role/lambda-role \
-    --zip-file fileb://lambda_criar_pedido.zip
-
+    --zip-file fileb://lambda_criar_pedido.zip \
+    --environment "Variables={PYTHONIOENCODING=utf-8,LANG=C.UTF-8}"
 
 awslocal lambda create-function \
     --function-name processar-pedido \
     --runtime python3.9 \
     --handler app.lambda_handler \
     --role arn:aws:iam::000000000000:role/lambda-role \
-    --zip-file fileb://lambda_processar_pedido.zip
+    --zip-file fileb://lambda_processar_pedido.zip \
+    --environment "Variables={PYTHONIOENCODING=utf-8,LANG=C.UTF-8}"
 
 
 echo "=== 3. Conectando Serviços ==="
-
-
-QUEUE_ARN=$(awslocal sqs get-queue-attributes --queue-url http://localhost:4566/000000000000/FilaDePedidos --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
-
-
-awslocal lambda create-event-source-mapping \
-    --function-name processar-pedido \
-    --event-source-arn $QUEUE_ARN \
-    --batch-size 1
-
 
 API_ID=$(awslocal apigateway create-rest-api --name "API Pedidos Restaurante" --query 'id' --output text)
 
